@@ -1,0 +1,33 @@
+
+version: '3.8'
+
+services:
+  order_service:
+    build:
+      context: ..
+      dockerfile: sync-rest/order_service/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ORDER_INVENTORY_TIMEOUT_MS=1000
+      - ORDER_NOTIFICATION_TIMEOUT_MS=1000
+    restart: on-failure
+
+  inventory_service:
+    build:
+      context: ..
+      dockerfile: sync-rest/inventory_service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - INVENTORY_DELAY_MS=0
+      - INVENTORY_FAIL_MODE=true
+    restart: on-failure
+
+  notification_service:
+    build:
+      context: ..
+      dockerfile: sync-rest/notification_service/Dockerfile
+    ports:
+      - "8002:8002"
+    restart: on-failure
