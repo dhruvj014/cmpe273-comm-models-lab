@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - rabbitmq_net
+
+  order_service:
+    build: ./order_service
+    container_name: order_service
+    ports:
+      - "5001:5001"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - rabbitmq_net
+
+  inventory_service:
+    build: ./inventory_service
+    container_name: inventory_service
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - rabbitmq_net
+
+  notification_service:
+    build: ./notification_service
+    container_name: notification_service
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - rabbitmq_net
+
+networks:
+  rabbitmq_net:
+    driver: bridge
