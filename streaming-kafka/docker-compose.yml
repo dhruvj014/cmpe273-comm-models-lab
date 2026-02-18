@@ -1,0 +1,78 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.3
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"   # host access (optional but useful)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.3
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      "
+      echo 'Waiting for Kafka...';
+      cub kafka-ready -b kafka:9092 1 30;
+
+      echo 'Creating topics...';
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic order-events --partitions 3 --replication-factor 1;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic inventory-events --partitions 3 --replication-factor 1;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic dlq-order-events --partitions 1 --replication-factor 1;
+
+      echo 'Done.';
+      "
+
+  producer_order:
+    build: ./producer_order
+    depends_on:
+      - kafka-init
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      ORDER_TOPIC: order-events
+    command: ["python", "app.py"]
+
+  inventory_consumer:
+    build: ./inventory_consumer
+    depends_on:
+      - kafka-init
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      ORDER_TOPIC: order-events
+      INVENTORY_TOPIC: inventory-events
+      DLQ_TOPIC: dlq-order-events
+      GROUP_ID: inventory-service
+      THROTTLE_MS: "0"
+    command: ["python", "app.py"]
+
+  analytics_consumer:
+    build: ./analytics_consumer
+    depends_on:
+      - kafka-init
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      ORDER_TOPIC: order-events
+      INVENTORY_TOPIC: inventory-events
+      GROUP_ID: analytics-service
+      OUTPUT_FILE: /app/metrics_report.json
+      FLUSH_EVERY: "2000"
+    volumes:
+      - ./analytics_consumer:/app
+    command: ["python", "app.py"]
